@@ -5,12 +5,13 @@ import { ProfileAnalysisCard } from './components/ProfileAnalysisCard';
 import { JobsListingSection } from './components/JobsListingSection';
 import { TailoredResumeModal } from './components/TailoredResumeModal';
 import { SalesPitchModal } from './components/SalesPitchModal';
+import { GoogleSyncModal } from './components/GoogleSyncModal';
 import { Footer } from './components/Footer';
 import { CandidateProfile, JobPosting, TailoredResume, SalesPitch } from './types/job';
-import { AlertCircle, RotateCcw, Sparkles, Cloud } from 'lucide-react';
+import { AlertCircle, RotateCcw, Sparkles, Cloud, CheckCircle2, ShieldCheck, Database } from 'lucide-react';
 import { auth, googleProvider, db, handleFirestoreError, OperationType } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { doc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc, serverTimestamp, getDoc, getDocs } from 'firebase/firestore';
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -40,6 +41,12 @@ export default function App() {
   const [salesPitch, setSalesPitch] = useState<SalesPitch | null>(null);
   const [isPitchModalOpen, setIsPitchModalOpen] = useState<boolean>(false);
 
+  // Google Sync state
+  const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [savedJobIds, setSavedJobIds] = useState<Set<string>>(new Set());
+
   // Loading flags
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStepText, setLoadingStepText] = useState<string>('');
@@ -53,6 +60,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        setLastSyncTime(new Date());
         // Sync user document to Firestore
         try {
           const userRef = doc(db, 'users', firebaseUser.uid);
@@ -62,10 +70,19 @@ export default function App() {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               displayName: firebaseUser.displayName || '',
-              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
             },
             { merge: true }
           );
+
+          // Load user's saved job IDs for bookmarks indicator
+          const jobsSnap = await getDocs(collection(db, `users/${firebaseUser.uid}/savedJobs`));
+          const ids = new Set<string>();
+          jobsSnap.forEach((d) => {
+            const data = d.data();
+            if (data.jobId) ids.add(data.jobId);
+          });
+          setSavedJobIds(ids);
         } catch (err) {
           console.error('Error syncing user to Firestore:', err);
         }
@@ -86,12 +103,13 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
+      setSavedJobIds(new Set());
     } catch (err) {
       console.error('Sign out error:', err);
     }
   };
 
-  // Save profile to Firestore if user is authenticated
+  // Save profile to Firestore
   const saveProfileToFirestore = async (candidateProfile: CandidateProfile) => {
     if (!auth.currentUser) return;
     const path = `users/${auth.currentUser.uid}/profiles`;
@@ -105,21 +123,28 @@ export default function App() {
         yearsOfExperience: candidateProfile.yearsOfExperience,
         location: candidateProfile.location,
         professionalSummary: candidateProfile.professionalSummary,
+        topSkills: candidateProfile.topSkills || [],
+        targetJobTitles: candidateProfile.targetJobTitles || [],
         updatedAt: new Date().toISOString(),
       });
+      setLastSyncTime(new Date());
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   };
 
-  // Save job to Firestore savedJobs subcollection
-  const saveJobToFirestore = async (job: JobPosting) => {
-    if (!auth.currentUser) return;
+  // Save/bookmark job to Firestore
+  const handleBookmarkJob = async (job: JobPosting) => {
+    if (!auth.currentUser) {
+      setIsGoogleSyncModalOpen(true);
+      return;
+    }
     const path = `users/${auth.currentUser.uid}/savedJobs`;
     try {
       const jobsCol = collection(db, path);
       await addDoc(jobsCol, {
         userId: auth.currentUser.uid,
+        jobId: job.id,
         title: job.title,
         company: job.company,
         platform: job.platform,
@@ -128,9 +153,36 @@ export default function App() {
         matchScore: job.matchScore,
         createdAt: new Date().toISOString(),
       });
+      setSavedJobIds((prev) => new Set([...prev, job.id]));
+      setLastSyncTime(new Date());
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
     }
+  };
+
+  // Manual Google Sync Trigger
+  const handleManualSync = async () => {
+    if (!auth.currentUser) {
+      handleGoogleSignIn();
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      if (profile) {
+        await saveProfileToFirestore(profile);
+      }
+      setLastSyncTime(new Date());
+    } catch (err) {
+      console.error('Manual sync error:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Restore Cloud Profile
+  const handleRestoreProfile = (cloudProfile: CandidateProfile) => {
+    setProfile(cloudProfile);
+    setCurrentStep(2);
   };
 
   // Main workflow trigger: analyzes CV and directly searches jobs across portals
@@ -266,16 +318,10 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      // Save job to Firestore
-      await saveJobToFirestore(job);
-
       const res = await fetch('/api/generate-tailored-cv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile,
-          job,
-        }),
+        body: JSON.stringify({ profile, job }),
       });
 
       if (!res.ok) {
@@ -288,7 +334,7 @@ export default function App() {
       setIsCvModalOpen(true);
       setCurrentStep(4);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al generar CV adaptado');
+      setErrorMessage(err.message || 'No se pudo generar el CV adaptado.');
     } finally {
       setIsGeneratingCv(false);
     }
@@ -302,20 +348,15 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      await saveJobToFirestore(job);
-
       const res = await fetch('/api/generate-sales-pitch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile,
-          job,
-        }),
+        body: JSON.stringify({ profile, job }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Error al generar el pitch de ventas');
+        throw new Error(data.error || 'Error al generar el sales pitch');
       }
 
       const data = await res.json();
@@ -323,13 +364,13 @@ export default function App() {
       setIsPitchModalOpen(true);
       setCurrentStep(4);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al generar Sales Pitch');
+      setErrorMessage(err.message || 'No se pudo generar el pitch de ventas.');
     } finally {
       setIsGeneratingPitch(false);
     }
   };
 
-  // Reset to search again with a new CV or email
+  // Reset to search again with a new CV
   const handleReset = () => {
     setProfile(null);
     setJobs([]);
@@ -342,29 +383,35 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-[#0B0F19] text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white relative overflow-x-hidden">
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-blue-600/10 blur-[130px] pointer-events-none" />
+      <div className="absolute top-48 right-10 w-96 h-96 bg-purple-600/5 blur-[130px] pointer-events-none" />
+
       <Header
         currentStep={currentStep}
         user={user}
         onSignIn={handleGoogleSignIn}
         onSignOut={handleSignOut}
+        onOpenGoogleSync={() => setIsGoogleSyncModalOpen(true)}
+        isSyncing={isSyncing}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full relative z-10 space-y-8">
         {/* Error notification banner if any */}
         {errorMessage && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-start justify-between gap-3 shadow-xs">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start justify-between gap-3 shadow-lg animate-fadeIn">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold">Aviso del sistema:</p>
-                <p className="text-xs sm:text-sm mt-0.5">{errorMessage}</p>
+                <p className="mt-0.5">{errorMessage}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setErrorMessage(null)}
-              className="text-xs font-bold text-rose-600 hover:underline cursor-pointer shrink-0"
+              className="text-xs font-bold text-rose-400 hover:text-white hover:underline cursor-pointer shrink-0"
             >
               Cerrar
             </button>
@@ -379,23 +426,27 @@ export default function App() {
             loadingStepText={loadingStepText}
           />
         ) : (
-          <div className="space-y-6">
-            {/* Top Bar with Reset option */}
-            <div className="flex items-center justify-between pb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                  <Cloud className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Sincronizado con Firestore para <strong className="text-slate-900">{profile.email || user?.email}</strong></span>
+          <div className="space-y-6 animate-fadeIn">
+            {/* Top Bar with Reset option & Google Sync Status */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
+              <button
+                type="button"
+                onClick={() => setIsGoogleSyncModalOpen(true)}
+                className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 text-left transition cursor-pointer"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs text-slate-300 flex items-center gap-1.5 font-medium">
+                  <Cloud className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Google Sync: Sincronizado para <strong className="text-white">{profile.email || user?.email || 'tu sesión'}</strong></span>
                 </span>
-              </div>
+              </button>
 
               <button
                 type="button"
                 onClick={handleReset}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 border border-slate-300 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition flex items-center gap-2 cursor-pointer shadow-sm self-start sm:self-auto"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
                 <span>Cargar otro currículum</span>
               </button>
             </div>
@@ -419,15 +470,17 @@ export default function App() {
                 isGeneratingPitch={isGeneratingPitch}
                 onSearchMore={handleSearchMore}
                 isLoadingMore={isSearchingMore}
+                onSaveJob={handleBookmarkJob}
+                savedJobIds={savedJobIds}
               />
             ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-                <Sparkles className="w-8 h-8 text-blue-500 mx-auto mb-3 animate-spin" />
-                <h4 className="text-base font-bold text-slate-900 mb-1">
-                  Buscando vacantes en bolsas de empleo...
+              <div className="bg-slate-900/80 backdrop-blur-xl rounded-3xl border border-slate-800 p-12 text-center space-y-3">
+                <Sparkles className="w-8 h-8 text-blue-400 mx-auto animate-spin" />
+                <h4 className="text-base font-bold text-white">
+                  Rastreando vacantes en bolsas de empleo...
                 </h4>
-                <p className="text-xs text-slate-500">
-                  Rastreando ofertas en Computrabajo, Indeed, LinkedIn y OCC compatibles con tu perfil.
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Consultando ofertas activas en Computrabajo, Indeed, LinkedIn y OCC compatibles con tu perfil.
                 </p>
               </div>
             )}
@@ -451,6 +504,20 @@ export default function App() {
         job={selectedJobForPitch}
         salesPitch={salesPitch}
         candidateName={profile?.fullName || 'Candidato'}
+      />
+
+      {/* Google Sync Hub Modal */}
+      <GoogleSyncModal
+        isOpen={isGoogleSyncModalOpen}
+        onClose={() => setIsGoogleSyncModalOpen(false)}
+        user={user}
+        onSignIn={handleGoogleSignIn}
+        onSignOut={handleSignOut}
+        currentProfile={profile}
+        onRestoreProfile={handleRestoreProfile}
+        onManualSync={handleManualSync}
+        isSyncing={isSyncing}
+        lastSyncTime={lastSyncTime}
       />
 
       <Footer />
