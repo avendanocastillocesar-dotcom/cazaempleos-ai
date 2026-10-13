@@ -9,7 +9,7 @@ import { GoogleSyncModal } from './components/GoogleSyncModal';
 import { Footer } from './components/Footer';
 import { CandidateProfile, JobPosting, TailoredResume, SalesPitch } from './types/job';
 import { AlertCircle, RotateCcw, Sparkles, Cloud, CheckCircle2, ShieldCheck, Database } from 'lucide-react';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from './firebase';
+import { auth, googleProvider, db, handleFirestoreError, OperationType, loginWithGoogle, logoutUser } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, setDoc, collection, addDoc, serverTimestamp, getDoc, getDocs } from 'firebase/firestore';
 
@@ -93,16 +93,16 @@ export default function App() {
 
   const handleGoogleSignIn = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      await loginWithGoogle();
     } catch (err: any) {
       console.error('Sign in error:', err);
-      setErrorMessage('No se pudo iniciar sesión con Google. Inténtalo de nuevo.');
+      setErrorMessage(err.message || 'No se pudo iniciar sesión con Google.');
     }
   };
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      await logoutUser();
       setSavedJobIds(new Set());
     } catch (err) {
       console.error('Sign out error:', err);
@@ -424,6 +424,8 @@ export default function App() {
             onAnalyzeAndSearch={handleAnalyzeAndSearch}
             isLoading={isLoading}
             loadingStepText={loadingStepText}
+            user={user}
+            onGoogleSignIn={handleGoogleSignIn}
           />
         ) : (
           <div className="space-y-6 animate-fadeIn">

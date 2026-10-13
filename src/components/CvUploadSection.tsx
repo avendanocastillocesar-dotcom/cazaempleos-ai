@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
   FileText,
   Mail,
-  User,
+  User as UserIcon,
   Sparkles,
   MapPin,
   Building,
@@ -22,7 +22,9 @@ import {
   TrendingUp,
   FileSpreadsheet
 } from 'lucide-react';
+import { User as FirebaseUser } from 'firebase/auth';
 import { SAMPLE_PROFILES, SampleProfilePreset } from '../data/sampleProfiles';
+import { GoogleLogoSvg } from './GoogleAuthButton';
 
 interface CvUploadSectionProps {
   onAnalyzeAndSearch: (params: {
@@ -39,15 +41,26 @@ interface CvUploadSectionProps {
   }) => Promise<void>;
   isLoading: boolean;
   loadingStepText: string;
+  user?: FirebaseUser | null;
+  onGoogleSignIn?: () => void;
 }
 
 export const CvUploadSection: React.FC<CvUploadSectionProps> = ({
   onAnalyzeAndSearch,
   isLoading,
   loadingStepText,
+  user,
+  onGoogleSignIn,
 }) => {
   const [email, setEmail] = useState('avendanocastillocesar@gmail.com');
   const [fullName, setFullName] = useState('César Avendaño');
+
+  useEffect(() => {
+    if (user) {
+      if (user.email) setEmail(user.email);
+      if (user.displayName) setFullName(user.displayName);
+    }
+  }, [user]);
   const [inputMode, setInputMode] = useState<'upload' | 'text'>('upload');
   const [cvText, setCvText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -222,6 +235,45 @@ export const CvUploadSection: React.FC<CvUploadSectionProps> = ({
             </div>
           )}
 
+          {/* Google Auth Banner */}
+          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                <GoogleLogoSvg className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white flex items-center gap-2">
+                  <span>Google Authentication</span>
+                  {user ? (
+                    <span className="text-[10px] text-emerald-400 font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
+                      ● Conectado
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-blue-400 font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+                      Sync en la nube
+                    </span>
+                  )}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {user
+                    ? `Sesión activa con ${user.displayName || user.email}. Tus postulaciones se sincronizan en Firestore.`
+                    : 'Inicia sesión con Google para autocompletar tus datos y guardar tus vacantes favoritas.'}
+                </p>
+              </div>
+            </div>
+
+            {!user && onGoogleSignIn && (
+              <button
+                type="button"
+                onClick={onGoogleSignIn}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-sm transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              >
+                <GoogleLogoSvg className="w-3.5 h-3.5" />
+                <span>Acceder con Google</span>
+              </button>
+            )}
+          </div>
+
           {/* User Basic Info Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -241,7 +293,7 @@ export const CvUploadSection: React.FC<CvUploadSectionProps> = ({
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-indigo-400" />
+                <UserIcon className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Nombre Completo</span>
               </label>
               <input

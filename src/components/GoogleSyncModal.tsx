@@ -21,6 +21,7 @@ import { User } from 'firebase/auth';
 import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { CandidateProfile, JobPosting } from '../types/job';
+import { GoogleLogoSvg } from './GoogleAuthButton';
 
 interface SavedJobItem {
   id: string;
@@ -214,10 +215,10 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({
               <button
                 type="button"
                 onClick={onSignIn}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20 transition cursor-pointer"
+                className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold text-slate-900 bg-white hover:bg-slate-100 shadow-lg shadow-white/5 transition cursor-pointer"
               >
-                <LogIn className="w-4 h-4" />
-                <span>Vincular con Google</span>
+                <GoogleLogoSvg className="w-4 h-4" />
+                <span>Continuar con Google</span>
               </button>
             </div>
           )}

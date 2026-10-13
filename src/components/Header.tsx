@@ -14,6 +14,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { User } from 'firebase/auth';
+import { GoogleAuthButton } from './GoogleAuthButton';
 
 interface HeaderProps {
   currentStep: number;
@@ -140,26 +141,13 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </button>
 
-          {/* Direct Sign in / Out Trigger */}
-          {user ? (
-            <button
-              type="button"
-              onClick={onSignOut}
-              title="Cerrar sesión"
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 transition cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onSignIn}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-md shadow-blue-600/20 transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Acceder</span>
-            </button>
-          )}
+          {/* Official Google Auth Button */}
+          <GoogleAuthButton
+            user={user}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+            variant="navbar"
+          />
         </div>
       </div>
     </header>
