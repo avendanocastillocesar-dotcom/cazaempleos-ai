@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account and profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "CandidateProfile": {
+      "title": "CandidateProfile",
+      "description": "Parsed CV and career profile",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "headline": { "type": "string", "maxLength": 256 },
+        "yearsOfExperience": { "type": "string", "maxLength": 64 },
+        "location": { "type": "string", "maxLength": 128 },
+        "professionalSummary": { "type": "string", "maxLength": 2048 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fullName"]
+    },
+    "SavedJob": {
+      "title": "SavedJob",
+      "description": "Job posting saved or searched by user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "company": { "type": "string", "maxLength": 128 },
+        "platform": { "type": "string", "maxLength": 64 },
+        "location": { "type": "string", "maxLength": 128 },
+        "applyUrl": { "type": "string", "maxLength": 1024 },
+        "matchScore": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "company", "applyUrl"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User profile document"
+    },
+    "/users/{userId}/profiles/{profileId}": {
+      "schema": { "$ref": "CandidateProfile" },
+      "description": "Candidate profile data"
+    },
+    "/users/{userId}/savedJobs/{jobId}": {
+      "schema": { "$ref": "SavedJob" },
+      "description": "Jobs saved by the user"
+    }
+  }
+}

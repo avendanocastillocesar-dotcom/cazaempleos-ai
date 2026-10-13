@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256;
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll(['userId', 'fullName']) &&
+             data.keys().hasOnly(['userId', 'fullName', 'email', 'headline', 'yearsOfExperience', 'location', 'professionalSummary', 'updatedAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.fullName is string && data.fullName.size() <= 128;
+    }
+
+    function isValidSavedJob(data) {
+      return data.keys().hasAll(['userId', 'title', 'company', 'applyUrl']) &&
+             data.keys().hasOnly(['userId', 'title', 'company', 'platform', 'location', 'applyUrl', 'matchScore', 'createdAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 256 &&
+             data.company is string && data.company.size() <= 128 &&
+             data.applyUrl is string && data.applyUrl.size() <= 1024;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isOwner(userId);
+
+      // Profiles subcollection
+      match /profiles/{profileId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(profileId) && isValidProfile(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
+      }
+
+      // SavedJobs subcollection
+      match /savedJobs/{jobId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(jobId) && isValidSavedJob(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

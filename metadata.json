@@ -1,0 +1,6 @@
+{
+  "name": "CazaEmpleos AI - Buscador de Vacantes & Tailored Pitch",
+  "description": "Buscador inteligente de ofertas laborales en Indeed, Computrabajo y bolsas de empleo con análisis de CV, vacantes a medida, currículum adaptado y sales pitch de postulación.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
